@@ -1,19 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  TouchableOpacity,
-  Alert,
-  RefreshControl,
-  TextInput,
-  Modal,
-  ScrollView
-} from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useApi } from '@/hooks/useApi';
 import { MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Alert,
+  FlatList,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const CATEGORIES = [
@@ -38,6 +39,7 @@ interface Expense {
 }
 
 export default function ExpensesScreen() {
+  const { fetchExpenses, deleteExpense } = useApi();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -48,14 +50,15 @@ export default function ExpensesScreen() {
 
   const loadExpenses = async () => {
     try {
-      const storedExpenses = await AsyncStorage.getItem('expenses');
-      const expensesData: Expense[] = storedExpenses ? JSON.parse(storedExpenses) : [];
-      
-      // Sort by date (newest first)
-      expensesData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setExpenses(expensesData);
+      const expensesData = await fetchExpenses();
+      if (Array.isArray(expensesData)) {
+        setExpenses(expensesData as Expense[]);
+      } else {
+        throw new Error('Invalid response format');
+      }
     } catch (error) {
-      console.error('Error loading expenses:', error);
+      console.error('Error loading expenses:', error); // Log the actual error
+      Alert.alert('Error', 'Failed to fetch expenses. Please check your network connection or try again later.');
     }
   };
 
@@ -127,27 +130,13 @@ export default function ExpensesScreen() {
     }
   };
 
-  const deleteExpense = async (expenseId: string) => {
-    Alert.alert(
-      'Delete Expense',
-      'Are you sure you want to delete this expense?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const updatedExpenses = expenses.filter(expense => expense.id !== expenseId);
-              await AsyncStorage.setItem('expenses', JSON.stringify(updatedExpenses));
-              setExpenses(updatedExpenses);
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete expense');
-            }
-          }
-        }
-      ]
-    );
+  const deleteExpenseHandler = async (expenseId: string) => {
+    try {
+      await deleteExpense(expenseId); // Ensure the ID is passed as a string
+      loadExpenses();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete expense');
+    }
   };
 
   const clearAllExpenses = () => {
@@ -188,7 +177,7 @@ export default function ExpensesScreen() {
             <MaterialIcons name="edit" size={18} color="#2e7d32" />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => deleteExpense(item.id)}
+            onPress={() => deleteExpenseHandler(item.id)}
             style={styles.deleteButton}
           >
             <MaterialIcons name="delete" size={18} color="#f44336" />
@@ -212,7 +201,7 @@ export default function ExpensesScreen() {
     </View>
   );
 
-  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const totalExpenses = expenses.reduce((sum, expense) => sum + (typeof expense.amount === 'number' ? expense.amount : 0), 0);
 
   return (
     <View style={styles.container}>

@@ -1,20 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Alert,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Modal
-} from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
+import { useApi } from '@/hooks/useApi';
 import { MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { router } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const CATEGORIES = [
@@ -52,6 +53,7 @@ interface Expense {
 }
 
 export default function AddExpense() {
+  const { addExpense, fetchExpenses } = useApi(); // Include fetchExpenses
   const [amount, setAmount] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [note, setNote] = useState('');
@@ -72,18 +74,14 @@ export default function AddExpense() {
     try {
       const storedBudget = await AsyncStorage.getItem('budget_amount');
       const storedType = await AsyncStorage.getItem('budget_type');
-      const storedExpenses = await AsyncStorage.getItem('expenses');
-      
+
       setBudget(storedBudget ? parseFloat(storedBudget) : 0);
       setBudgetType((storedType as 'weekly' | 'monthly') || null);
-      
-      if (storedExpenses) {
-        const expenses: Expense[] = JSON.parse(storedExpenses);
-        const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
-        setCurrentExpenses(total);
-      } else {
-        setCurrentExpenses(0);
-      }
+
+      // Fetch expenses from the backend
+      const expenses = await fetchExpenses();
+      const total = (expenses as Expense[]).reduce((sum, expense) => sum + expense.amount, 0);
+      setCurrentExpenses(total); // Update currentExpenses with the total from the backend
     } catch (error) {
       console.error('Error loading budget data:', error);
     }
@@ -155,48 +153,22 @@ export default function AddExpense() {
     setLoading(true);
 
     try {
-      const storedExpenses = await AsyncStorage.getItem('expenses');
-      const expenses: Expense[] = storedExpenses ? JSON.parse(storedExpenses) : [];
-
-      const newExpense: Expense = {
-        id: Date.now().toString(),
+      const newExpense = {
         amount: expenseAmount,
-        category: category,
+        category,
         note: noteText,
-        date: new Date().toISOString(),
+        date: new Date().toISOString().slice(0, 19).replace('T', ' '), // Format date for MySQL
       };
 
-      expenses.push(newExpense);
-      await AsyncStorage.setItem('expenses', JSON.stringify(expenses));
+      console.log('Sending expense to backend:', newExpense); // Log the request data
+      await addExpense(newExpense);
 
-      // Update current expenses
-      setCurrentExpenses(prev => prev + expenseAmount);
-
-      // Clear the form immediately
       clearForm();
       setJustAdded(true);
-
-      // Show success message
-      Alert.alert(
-        'Expense Added!', 
-        `₱${expenseAmount.toFixed(2)} has been added to your expenses.`,
-        [
-          {
-            text: 'Add Another',
-            style: 'cancel'
-          },
-          {
-            text: 'View Expenses',
-            onPress: () => router.push('/(tabs)/expenses')
-          }
-        ]
-      );
-
-      // Hide success state after 2 seconds
-      setTimeout(() => setJustAdded(false), 2000);
-
+      Alert.alert('Expense Added!', `₱${expenseAmount.toFixed(2)} has been added to your expenses.`);
     } catch (error) {
-      Alert.alert('Error', 'Failed to add expense');
+      console.error('Error adding expense:', error); // Log the error for debugging
+      Alert.alert('Error', 'Failed to add expense. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -355,126 +327,126 @@ export default function AddExpense() {
   };
 
   return (
-  <SafeAreaView style={{ flex: 1 }}>
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Add New Expense</Text>
+    <SafeAreaView style={{ flex: 1 }}>
+      <KeyboardAvoidingView 
+        style={styles.container} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <Text style={styles.title}>Add New Expense</Text>
 
-        {/* Budget Status Indicator */}
-        {budget > 0 && (
-          <View style={styles.budgetIndicator}>
-            <Text style={styles.budgetIndicatorText}>
-              Budget Remaining: <Text style={styles.remainingAmount}>₱{getRemainingBudget().toFixed(2)}</Text>
-            </Text>
-            <View style={styles.budgetBar}>
-              <View 
-                style={[
-                  styles.budgetBarFill, 
-                  { width: `${Math.min((currentExpenses / budget) * 100, 100)}%` }
-                ]} 
+          {/* Budget Status Indicator */}
+          {budget > 0 && (
+            <View style={styles.budgetIndicator}>
+              <Text style={styles.budgetIndicatorText}>
+                Budget Remaining: <Text style={styles.remainingAmount}>₱{getRemainingBudget().toFixed(2)}</Text>
+              </Text>
+              <View style={styles.budgetBar}>
+                <View 
+                  style={[
+                    styles.budgetBarFill, 
+                    { width: `${Math.min((currentExpenses / budget) * 100, 100)}%` }
+                  ]} 
+                />
+              </View>
+            </View>
+          )}
+
+          {justAdded && (
+            <View style={styles.successBanner}>
+              <Text style={styles.successText}>✅ Expense added successfully!</Text>
+            </View>
+          )}
+
+          {/* Amount Input */}
+          <View style={styles.section}>
+            <Text style={styles.label}>Amount</Text>
+            <View style={styles.amountContainer}>
+              <Text style={styles.currency}>₱</Text>
+              <TextInput
+                style={styles.amountInput}
+                value={amount}
+                onChangeText={setAmount}
+                placeholder="0.00"
+                keyboardType="numeric"
+                autoFocus
               />
             </View>
+            {/* Show warning if amount exceeds remaining budget */}
+            {budget > 0 && amount && parseFloat(amount) > getRemainingBudget() && (
+              <Text style={styles.warningHint}>
+                ⚠️ This exceeds your remaining budget by ₱{(parseFloat(amount) - getRemainingBudget()).toFixed(2)}
+              </Text>
+            )}
           </View>
-        )}
 
-        {justAdded && (
-          <View style={styles.successBanner}>
-            <Text style={styles.successText}>✅ Expense added successfully!</Text>
+          {/* Category Selection */}
+          <View style={styles.section}>
+            <Text style={styles.label}>Category</Text>
+            <View style={styles.categoriesContainer}>
+              {CATEGORIES.map((category) => (
+                <TouchableOpacity
+                  key={category}
+                  style={[
+                    styles.categoryButton,
+                    selectedCategory === category && styles.categorySelected
+                  ]}
+                  onPress={() => setSelectedCategory(category)}
+                >
+                  <Text style={[
+                    styles.categoryText,
+                    selectedCategory === category && styles.categoryTextSelected
+                  ]}>
+                    {category}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-        )}
 
-        {/* Amount Input */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Amount</Text>
-          <View style={styles.amountContainer}>
-            <Text style={styles.currency}>₱</Text>
+          {/* Note Input */}
+          <View style={styles.section}>
+            <Text style={styles.label}>Note (Optional)</Text>
             <TextInput
-              style={styles.amountInput}
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="0.00"
-              keyboardType="numeric"
-              autoFocus
+              style={styles.noteInput}
+              value={note}
+              onChangeText={setNote}
+              placeholder="Add a note about this expense..."
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
             />
           </View>
-          {/* Show warning if amount exceeds remaining budget */}
-          {budget > 0 && amount && parseFloat(amount) > getRemainingBudget() && (
-            <Text style={styles.warningHint}>
-              ⚠️ This exceeds your remaining budget by ₱{(parseFloat(amount) - getRemainingBudget()).toFixed(2)}
-            </Text>
-          )}
-        </View>
 
-        {/* Category Selection */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Category</Text>
-          <View style={styles.categoriesContainer}>
-            {CATEGORIES.map((category) => (
-              <TouchableOpacity
-                key={category}
-                style={[
-                  styles.categoryButton,
-                  selectedCategory === category && styles.categorySelected
-                ]}
-                onPress={() => setSelectedCategory(category)}
-              >
-                <Text style={[
-                  styles.categoryText,
-                  selectedCategory === category && styles.categoryTextSelected
-                ]}>
-                  {category}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Note Input */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Note (Optional)</Text>
-          <TextInput
-            style={styles.noteInput}
-            value={note}
-            onChangeText={setNote}
-            placeholder="Add a note about this expense..."
-            multiline
-            numberOfLines={3}
-            textAlignVertical="top"
-          />
-        </View>
-
-        {/* Add Button */}
-        <TouchableOpacity
-          style={[
-            styles.addButton,
-            (!amount || !selectedCategory || loading) && styles.addButtonDisabled
-          ]}
-          onPress={handleAddExpense}
-          disabled={!amount || !selectedCategory || loading}
-        >
-          <Text style={styles.addButtonText}>
-            {loading ? 'Adding...' : 'Add Expense'}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Quick Add Another Button */}
-        {justAdded && (
+          {/* Add Button */}
           <TouchableOpacity
-            style={styles.quickAddButton}
-            onPress={() => setJustAdded(false)}
+            style={[
+              styles.addButton,
+              (!amount || !selectedCategory || loading) && styles.addButtonDisabled
+            ]}
+            onPress={handleAddExpense}
+            disabled={!amount || !selectedCategory || loading}
           >
-            <Text style={styles.quickAddText}>Add Another Expense</Text>
+            <Text style={styles.addButtonText}>
+              {loading ? 'Adding...' : 'Add Expense'}
+            </Text>
           </TouchableOpacity>
-        )}
-      </ScrollView>
 
-      <BudgetWarningModal />
-      <TipsModal />
-    </KeyboardAvoidingView>
-    </ SafeAreaView>
+          {/* Quick Add Another Button */}
+          {justAdded && (
+            <TouchableOpacity
+              style={styles.quickAddButton}
+              onPress={() => setJustAdded(false)}
+            >
+              <Text style={styles.quickAddText}>Add Another Expense</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+
+        <BudgetWarningModal />
+        <TipsModal />
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 

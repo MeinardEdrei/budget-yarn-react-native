@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native';
+import { useApi } from '@/hooks/useApi';
+import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface Expense {
@@ -15,22 +16,33 @@ interface Expense {
 }
 
 export default function HomeScreen() {
+  const { fetchExpenses, clearAllExpenses } = useApi();
   const [budgetType, setBudgetType] = useState<'weekly' | 'monthly' | null>(null);
   const [budget, setBudget] = useState<number>(0);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [totalExpenses, setTotalExpenses] = useState(0);
 
   const loadData = async () => {
     try {
       const type = await AsyncStorage.getItem('budget_type');
       const storedBudget = await AsyncStorage.getItem('budget_amount');
-      const storedExpenses = await AsyncStorage.getItem('expenses');
-      
+
       setBudgetType((type as 'weekly' | 'monthly') || null);
       setBudget(storedBudget ? parseFloat(storedBudget) : 0);
-      setExpenses(storedExpenses ? JSON.parse(storedExpenses) : []);
+
+      // Fetch expenses from the backend
+      const expensesData = await fetchExpenses();
+      if (Array.isArray(expensesData)) {
+        setExpenses(expensesData as Expense[]);
+        const total = expensesData.reduce((sum, expense) => sum + expense.amount, 0);
+        setTotalExpenses(total);
+      } else {
+        throw new Error('Invalid response format');
+      }
     } catch (error) {
       console.error('Error loading data:', error);
+      Alert.alert('Error', 'Failed to load data. Please try again.');
     }
   };
 
@@ -125,8 +137,9 @@ export default function HomeScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await AsyncStorage.setItem('expenses', JSON.stringify([]));
-              setExpenses([]);
+              await clearAllExpenses(); // Clear all expenses from the backend
+              setExpenses([]); // Reset the local state
+              setTotalExpenses(0); // Reset the total expenses
               Alert.alert('Success', 'Budget period reset successfully!');
             } catch (error) {
               Alert.alert('Error', 'Failed to reset budget');
@@ -136,6 +149,13 @@ export default function HomeScreen() {
       ]
     );
   };
+
+  const renderExpenseItem = ({ item }: { item: Expense }) => (
+    <View style={styles.expenseCard}>
+      <Text style={styles.expenseCategory}>{item.category}</Text>
+      <Text style={styles.expenseAmount}>₱ {item.amount.toFixed(2)}</Text>
+    </View>
+  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fefefe' }}>
@@ -488,5 +508,16 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     marginLeft: 8,
+  },
+  expenseCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
 });
