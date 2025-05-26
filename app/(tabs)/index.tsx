@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface Expense {
   id: string;
@@ -137,6 +138,7 @@ export default function HomeScreen() {
   };
 
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fefefe' }}>
     <ScrollView 
       style={styles.container}
       refreshControl={
@@ -263,6 +265,7 @@ export default function HomeScreen() {
         </View>
       )}
     </ScrollView>
+    </SafeAreaView>
   );
 }
 

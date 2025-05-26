@@ -15,6 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const CATEGORIES = [
   '🍕 Food',
@@ -354,6 +355,7 @@ export default function AddExpense() {
   };
 
   return (
+  <SafeAreaView style={{ flex: 1 }}>
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -472,6 +474,7 @@ export default function AddExpense() {
       <BudgetWarningModal />
       <TipsModal />
     </KeyboardAvoidingView>
+    </ SafeAreaView>
   );
 }
 

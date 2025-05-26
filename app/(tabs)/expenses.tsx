@@ -14,6 +14,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const CATEGORIES = [
   '🍕 Food',
@@ -215,6 +216,7 @@ export default function ExpensesScreen() {
 
   return (
     <View style={styles.container}>
+      <SafeAreaView style={{ flex: 0 }} />
       <View style={styles.header}>
         <Text style={styles.title}>All Expenses</Text>
         {expenses.length > 0 && (
