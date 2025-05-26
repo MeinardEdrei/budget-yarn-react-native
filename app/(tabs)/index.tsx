@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { MaterialIcons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 
 interface Expense {
   id: string;
@@ -50,11 +52,89 @@ export default function HomeScreen() {
 
   const totalSpent = expenses.reduce((sum, expense) => sum + expense.amount, 0);
   const remaining = budget - totalSpent;
+  const percentageUsed = budget > 0 ? (totalSpent / budget) * 100 : 0;
 
   // Get recent expenses (last 5)
   const recentExpenses = expenses
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
+
+  // Budget status functions
+  const getBudgetStatus = () => {
+    if (remaining < 0) return 'exceeded';
+    if (percentageUsed >= 90) return 'critical';
+    if (percentageUsed >= 75) return 'warning';
+    if (percentageUsed >= 50) return 'caution';
+    return 'good';
+  };
+
+  const getBudgetStatusColor = () => {
+    const status = getBudgetStatus();
+    switch (status) {
+      case 'exceeded': return '#d32f2f';
+      case 'critical': return '#f57c00';
+      case 'warning': return '#fbc02d';
+      case 'caution': return '#689f38';
+      default: return '#2e7d32';
+    }
+  };
+
+  const getBudgetMessage = () => {
+    const status = getBudgetStatus();
+    switch (status) {
+      case 'exceeded':
+        return `⚠️ Budget exceeded by ₱${Math.abs(remaining).toFixed(2)}`;
+      case 'critical':
+        return `🚨 Only ₱${remaining.toFixed(2)} left (${(100 - percentageUsed).toFixed(1)}%)`;
+      case 'warning':
+        return `⚡ Low budget: ₱${remaining.toFixed(2)} remaining`;
+      case 'caution':
+        return `📊 Half budget used - ₱${remaining.toFixed(2)} left`;
+      default:
+        return `✅ Budget on track - ₱${remaining.toFixed(2)} remaining`;
+    }
+  };
+
+  const handleEditBudget = () => {
+    Alert.alert(
+      'Edit Budget',
+      'Do you want to change your budget amount or budget type?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Change Amount',
+          onPress: () => router.push('/budget-setup')
+        },
+        {
+          text: 'Change Type',
+          onPress: () => router.push('/onboarding')
+        }
+      ]
+    );
+  };
+
+  const resetBudget = () => {
+    Alert.alert(
+      'Reset Budget Period',
+      `Are you sure you want to reset your ${budgetType} budget? This will clear all current expenses.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await AsyncStorage.setItem('expenses', JSON.stringify([]));
+              setExpenses([]);
+              Alert.alert('Success', 'Budget period reset successfully!');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to reset budget');
+            }
+          }
+        }
+      ]
+    );
+  };
 
   return (
     <ScrollView 
@@ -63,36 +143,95 @@ export default function HomeScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <Text style={styles.title}>🎓 Welcome, Student!</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>🎓 Welcome, Student!</Text>
+        <TouchableOpacity onPress={handleEditBudget} style={styles.editButton}>
+          <MaterialIcons name="edit" size={20} color="#666" />
+        </TouchableOpacity>
+      </View>
       
       {budgetType && (
         <Text style={styles.subtext}>
           You're on a <Text style={styles.bold}>{budgetType}</Text> budget.
         </Text>
       )}
-      
-      <View style={styles.card}>
-        <Text style={styles.label}>Total Budget</Text>
-        <Text style={styles.amount}>₱ {budget.toFixed(2)}</Text>
-        
-        <Text style={styles.label}>Spent</Text>
-        <Text style={styles.amount}>₱ {totalSpent.toFixed(2)}</Text>
-        
-        <Text style={styles.label}>Remaining</Text>
-        <Text style={[styles.amount, remaining < 0 && styles.negative]}>
-          ₱ {remaining.toFixed(2)}
-        </Text>
-      </View>
 
-      {remaining < 0 && (
-        <View style={styles.warningCard}>
-          <Text style={styles.warningText}>⚠️ You've exceeded your budget!</Text>
+      {/* Budget Status Alert */}
+      {getBudgetStatus() !== 'good' && (
+        <View style={[styles.alertCard, { borderLeftColor: getBudgetStatusColor() }]}>
+          <Text style={[styles.alertText, { color: getBudgetStatusColor() }]}>
+            {getBudgetMessage()}
+          </Text>
         </View>
       )}
+      
+      <View style={styles.card}>
+        <View style={styles.budgetHeader}>
+          <Text style={styles.label}>Budget Overview</Text>
+          <TouchableOpacity onPress={resetBudget} style={styles.resetButton}>
+            <MaterialIcons name="refresh" size={16} color="#666" />
+            <Text style={styles.resetText}>Reset Period</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Progress Bar */}
+        <View style={styles.progressContainer}>
+          <View style={styles.progressBar}>
+            <View 
+              style={[
+                styles.progressFill, 
+                { 
+                  width: `${Math.min(percentageUsed, 100)}%`,
+                  backgroundColor: getBudgetStatusColor()
+                }
+              ]} 
+            />
+          </View>
+          <Text style={styles.progressText}>
+            {percentageUsed.toFixed(1)}% used
+          </Text>
+        </View>
+        
+        <View style={styles.budgetRow}>
+          <View style={styles.budgetItem}>
+            <Text style={styles.label}>Total Budget</Text>
+            <Text style={styles.amount}>₱ {budget.toFixed(2)}</Text>
+          </View>
+          <View style={styles.budgetItem}>
+            <Text style={styles.label}>Spent</Text>
+            <Text style={[styles.amount, { color: '#f44336' }]}>₱ {totalSpent.toFixed(2)}</Text>
+          </View>
+        </View>
+        
+        <View style={styles.remainingContainer}>
+          <Text style={styles.label}>Remaining</Text>
+          <Text style={[
+            styles.remainingAmount, 
+            { color: getBudgetStatusColor() }
+          ]}>
+            ₱ {remaining.toFixed(2)}
+          </Text>
+        </View>
+
+        {/* Daily/Weekly allowance suggestion */}
+        {remaining > 0 && (
+          <View style={styles.suggestionContainer}>
+            <Text style={styles.suggestionText}>
+              💡 Suggested {budgetType === 'weekly' ? 'daily' : 'weekly'} limit: 
+              ₱{(remaining / (budgetType === 'weekly' ? 7 : 4)).toFixed(2)}
+            </Text>
+          </View>
+        )}
+      </View>
 
       {recentExpenses.length > 0 && (
         <View style={styles.recentCard}>
-          <Text style={styles.sectionTitle}>Recent Expenses</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent Expenses</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/expenses')}>
+              <Text style={styles.viewAllText}>View All</Text>
+            </TouchableOpacity>
+          </View>
           {recentExpenses.map((expense) => (
             <View key={expense.id} style={styles.expenseItem}>
               <View style={styles.expenseHeader}>
@@ -109,6 +248,20 @@ export default function HomeScreen() {
           ))}
         </View>
       )}
+
+      {expenses.length === 0 && (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No expenses yet</Text>
+          <Text style={styles.emptySubtext}>Start tracking your spending!</Text>
+          <TouchableOpacity 
+            style={styles.addFirstButton}
+            onPress={() => router.push('/(tabs)/add-expense')}
+          >
+            <MaterialIcons name="add-circle" size={24} color="#fff" />
+            <Text style={styles.addFirstText}>Add First Expense</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -119,20 +272,49 @@ const styles = StyleSheet.create({
     padding: 24, 
     backgroundColor: '#fefefe' 
   },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   title: { 
     fontSize: 24, 
-    fontWeight: 'bold', 
-    marginBottom: 8 
+    fontWeight: 'bold',
+  },
+  editButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
   },
   subtext: { 
     fontSize: 16, 
-    marginBottom: 24 
+    marginBottom: 24,
+    color: '#666',
   },
   bold: { 
-    fontWeight: 'bold' 
+    fontWeight: 'bold',
+    color: '#2e7d32',
+  },
+  alertCard: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  alertText: {
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   card: { 
-    padding: 16, 
+    padding: 20, 
     borderRadius: 12, 
     backgroundColor: '#fff', 
     marginBottom: 16,
@@ -142,47 +324,109 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
+  budgetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  resetText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 4,
+  },
+  progressContainer: {
+    marginBottom: 20,
+  },
+  progressBar: {
+    height: 8,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  progressText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+  },
+  budgetRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  budgetItem: {
+    flex: 1,
+  },
   label: { 
     fontSize: 14, 
     color: '#555',
     marginBottom: 4,
   },
   amount: { 
-    fontSize: 20, 
-    fontWeight: 'bold', 
-    marginBottom: 12 
+    fontSize: 18, 
+    fontWeight: 'bold',
+    color: '#333',
   },
-  negative: { 
-    color: 'red' 
+  remainingContainer: {
+    alignItems: 'center',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
   },
-  warningCard: {
-    backgroundColor: '#ffebee',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#f44336',
+  remainingAmount: {
+    fontSize: 24,
+    fontWeight: 'bold',
   },
-  warningText: {
-    color: '#c62828',
-    fontWeight: '600',
+  suggestionContainer: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+  },
+  suggestionText: {
+    fontSize: 14,
+    color: '#666',
     textAlign: 'center',
   },
   recentCard: {
     backgroundColor: '#fff',
     padding: 16,
     borderRadius: 12,
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: 12,
     color: '#333',
+  },
+  viewAllText: {
+    fontSize: 14,
+    color: '#2e7d32',
+    fontWeight: '600',
   },
   expenseItem: {
     paddingVertical: 8,
@@ -213,5 +457,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
     marginTop: 4,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    marginBottom: 24,
+  },
+  addFirstButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2e7d32',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  addFirstText: {
+    color: '#fff',
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });

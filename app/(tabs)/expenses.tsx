@@ -6,11 +6,27 @@ import {
   FlatList, 
   TouchableOpacity,
   Alert,
-  RefreshControl
+  RefreshControl,
+  TextInput,
+  Modal,
+  ScrollView
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+
+const CATEGORIES = [
+  '🍕 Food',
+  '🚌 Transportation',
+  '📚 School Supplies',
+  '👕 Clothing',
+  '🎬 Entertainment',
+  '💊 Health',
+  '☕ Coffee/Snacks',
+  '📱 Phone/Internet',
+  '🏠 Utilities',
+  '🎁 Others'
+];
 
 interface Expense {
   id: string;
@@ -23,6 +39,11 @@ interface Expense {
 export default function ExpensesScreen() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editNote, setEditNote] = useState('');
 
   const loadExpenses = async () => {
     try {
@@ -54,6 +75,57 @@ export default function ExpensesScreen() {
     setRefreshing(false);
   }, []);
 
+  const openEditModal = (expense: Expense) => {
+    setEditingExpense(expense);
+    setEditAmount(expense.amount.toString());
+    setEditCategory(expense.category);
+    setEditNote(expense.note);
+    setEditModalVisible(true);
+  };
+
+  const closeEditModal = () => {
+    setEditModalVisible(false);
+    setEditingExpense(null);
+    setEditAmount('');
+    setEditCategory('');
+    setEditNote('');
+  };
+
+  const saveEditedExpense = async () => {
+    if (!editingExpense) return;
+
+    const amount = parseFloat(editAmount);
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid expense amount');
+      return;
+    }
+
+    if (!editCategory) {
+      Alert.alert('Missing Category', 'Please select a category');
+      return;
+    }
+
+    try {
+      const updatedExpenses = expenses.map(expense => 
+        expense.id === editingExpense.id 
+          ? {
+              ...expense,
+              amount,
+              category: editCategory,
+              note: editNote.trim()
+            }
+          : expense
+      );
+
+      await AsyncStorage.setItem('expenses', JSON.stringify(updatedExpenses));
+      setExpenses(updatedExpenses);
+      closeEditModal();
+      Alert.alert('Success', 'Expense updated successfully!');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update expense');
+    }
+  };
+
   const deleteExpense = async (expenseId: string) => {
     Alert.alert(
       'Delete Expense',
@@ -77,6 +149,29 @@ export default function ExpensesScreen() {
     );
   };
 
+  const clearAllExpenses = () => {
+    Alert.alert(
+      'Clear All Expenses',
+      'Are you sure you want to delete all expenses? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await AsyncStorage.setItem('expenses', JSON.stringify([]));
+              setExpenses([]);
+              Alert.alert('Success', 'All expenses cleared!');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to clear expenses');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const renderExpenseItem = ({ item }: { item: Expense }) => (
     <View style={styles.expenseCard}>
       <View style={styles.expenseHeader}>
@@ -84,12 +179,20 @@ export default function ExpensesScreen() {
           <Text style={styles.expenseCategory}>{item.category}</Text>
           <Text style={styles.expenseAmount}>₱ {item.amount.toFixed(2)}</Text>
         </View>
-        <TouchableOpacity
-          onPress={() => deleteExpense(item.id)}
-          style={styles.deleteButton}
-        >
-          <MaterialIcons name="delete" size={20} color="#f44336" />
-        </TouchableOpacity>
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            onPress={() => openEditModal(item)}
+            style={styles.editButton}
+          >
+            <MaterialIcons name="edit" size={18} color="#2e7d32" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => deleteExpense(item.id)}
+            style={styles.deleteButton}
+          >
+            <MaterialIcons name="delete" size={18} color="#f44336" />
+          </TouchableOpacity>
+        </View>
       </View>
       
       {item.note && (
@@ -112,7 +215,14 @@ export default function ExpensesScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>All Expenses</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>All Expenses</Text>
+        {expenses.length > 0 && (
+          <TouchableOpacity onPress={clearAllExpenses} style={styles.clearButton}>
+            <MaterialIcons name="clear-all" size={20} color="#f44336" />
+          </TouchableOpacity>
+        )}
+      </View>
       
       {expenses.length > 0 && (
         <View style={styles.summaryCard}>
@@ -124,6 +234,7 @@ export default function ExpensesScreen() {
 
       {expenses.length === 0 ? (
         <View style={styles.emptyContainer}>
+          <MaterialIcons name="receipt-long" size={64} color="#ccc" />
           <Text style={styles.emptyText}>No expenses yet</Text>
           <Text style={styles.emptySubtext}>Add your first expense to start tracking!</Text>
         </View>
@@ -138,6 +249,81 @@ export default function ExpensesScreen() {
           }
         />
       )}
+
+      {/* Edit Expense Modal */}
+      <Modal
+        visible={editModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={closeEditModal}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={closeEditModal}>
+              <MaterialIcons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Edit Expense</Text>
+            <TouchableOpacity onPress={saveEditedExpense} style={styles.saveButton}>
+              <Text style={styles.saveButtonText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            {/* Amount Input */}
+            <View style={styles.section}>
+              <Text style={styles.label}>Amount</Text>
+              <View style={styles.amountContainer}>
+                <Text style={styles.currency}>₱</Text>
+                <TextInput
+                  style={styles.amountInput}
+                  value={editAmount}
+                  onChangeText={setEditAmount}
+                  placeholder="0.00"
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            {/* Category Selection */}
+            <View style={styles.section}>
+              <Text style={styles.label}>Category</Text>
+              <View style={styles.categoriesContainer}>
+                {CATEGORIES.map((category) => (
+                  <TouchableOpacity
+                    key={category}
+                    style={[
+                      styles.categoryButton,
+                      editCategory === category && styles.categorySelected
+                    ]}
+                    onPress={() => setEditCategory(category)}
+                  >
+                    <Text style={[
+                      styles.categoryText,
+                      editCategory === category && styles.categoryTextSelected
+                    ]}>
+                      {category}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Note Input */}
+            <View style={styles.section}>
+              <Text style={styles.label}>Note (Optional)</Text>
+              <TextInput
+                style={styles.noteInput}
+                value={editNote}
+                onChangeText={setEditNote}
+                placeholder="Add a note about this expense..."
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -148,11 +334,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#fefefe',
     padding: 24,
   },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   title: {
     fontSize: 24,
     fontWeight: '700',
-    marginBottom: 16,
     color: '#333',
+  },
+  clearButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#ffebee',
   },
   summaryCard: {
     backgroundColor: '#fff',
@@ -211,9 +407,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#2e7d32',
   },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  editButton: {
+    padding: 8,
+    borderRadius: 16,
+    backgroundColor: '#e8f5e8',
+  },
   deleteButton: {
-    padding: 4,
-    marginLeft: 8,
+    padding: 8,
+    borderRadius: 16,
+    backgroundColor: '#ffebee',
   },
   expenseNote: {
     fontSize: 14,
@@ -235,12 +441,121 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#666',
+    color: '#999',
+    marginTop: 16,
     marginBottom: 8,
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#999',
+    color: '#ccc',
     textAlign: 'center',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#fefefe',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  saveButton: {
+    backgroundColor: '#2e7d32',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  modalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  amountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    paddingHorizontal: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  currency: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2e7d32',
+    marginRight: 8,
+  },
+  amountInput: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    paddingVertical: 16,
+  },
+  categoriesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryButton: {
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  categorySelected: {
+    backgroundColor: '#e8f5e8',
+    borderColor: '#2e7d32',
+  },
+  categoryText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  categoryTextSelected: {
+    color: '#2e7d32',
+    fontWeight: '600',
+  },
+  noteInput: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    padding: 16,
+    fontSize: 16,
+    color: '#333',
+    minHeight: 80,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
 });
