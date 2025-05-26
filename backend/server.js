@@ -92,6 +92,40 @@ app.post('/expenses', (req, res) => {
   }
 });
 
+app.put('/expenses/:id', (req, res) => {
+  const { id } = req.params;
+  const { amount, category, note, date } = req.body;
+
+  // Validate the incoming data
+  if (!amount || !category || !date) {
+    console.error('Invalid data:', req.body);
+    res.status(400).send('Invalid data. Amount, category, and date are required.');
+    return;
+  }
+
+  try {
+    // Convert ISO 8601 date to MySQL DATETIME format
+    const formattedDate = new Date(date).toISOString().slice(0, 19).replace('T', ' ');
+
+    const query = 'UPDATE expenses SET amount = ?, category = ?, note = ?, date = ? WHERE id = ?';
+    db.query(query, [amount, category, note, formattedDate, id], (err, results) => {
+      if (err) {
+        console.error('Error updating expense:', err.message);
+        res.status(500).send(err.message);
+        return;
+      }
+      if (results.affectedRows === 0) {
+        res.status(404).send('Expense not found.');
+        return;
+      }
+      res.status(200).send('Expense updated successfully.');
+    });
+  } catch (error) {
+    console.error('Error processing date:', error.message);
+    res.status(500).send('Error processing date.');
+  }
+});
+
 app.delete('/expenses/:id', (req, res) => {
   const { id } = req.params;
   db.query('DELETE FROM expenses WHERE id = ?', [id], (err) => {

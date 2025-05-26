@@ -33,5 +33,9 @@ export const useApi = () => {
     await axios.delete(`${API_URL}/expenses`);
   };
 
-  return { fetchExpenses, addExpense, deleteExpense, clearAllExpenses };
+  const updateExpense = async (id: string, updatedExpense: { amount: number; category: string; note: string; date: string }) => {
+    await axios.put(`${API_URL}/expenses/${id}`, updatedExpense);
+  };
+
+  return { fetchExpenses, addExpense, deleteExpense, clearAllExpenses, updateExpense };
 };

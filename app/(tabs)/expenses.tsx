@@ -1,6 +1,5 @@
 import { useApi } from '@/hooks/useApi';
 import { MaterialIcons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -39,7 +38,7 @@ interface Expense {
 }
 
 export default function ExpensesScreen() {
-  const { fetchExpenses, deleteExpense } = useApi();
+  const { fetchExpenses, deleteExpense, clearAllExpenses, updateExpense } = useApi();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -110,19 +109,19 @@ export default function ExpensesScreen() {
     }
 
     try {
-      const updatedExpenses = expenses.map(expense => 
-        expense.id === editingExpense.id 
-          ? {
-              ...expense,
-              amount,
-              category: editCategory,
-              note: editNote.trim()
-            }
-          : expense
+      const updatedExpense = {
+        amount,
+        category: editCategory,
+        note: editNote.trim(),
+        date: editingExpense.date, // Keep the original date
+      };
+
+      await updateExpense(editingExpense.id, updatedExpense); // Call the API to update the expense
+      const updatedExpenses = expenses.map((expense) =>
+        expense.id === editingExpense.id ? { ...expense, ...updatedExpense } : expense
       );
 
-      await AsyncStorage.setItem('expenses', JSON.stringify(updatedExpenses));
-      setExpenses(updatedExpenses);
+      setExpenses(updatedExpenses); // Update the local state
       closeEditModal();
       Alert.alert('Success', 'Expense updated successfully!');
     } catch (error) {
@@ -139,7 +138,7 @@ export default function ExpensesScreen() {
     }
   };
 
-  const clearAllExpenses = () => {
+  const clearAllExpensesHandler = () => {
     Alert.alert(
       'Clear All Expenses',
       'Are you sure you want to delete all expenses? This action cannot be undone.',
@@ -150,8 +149,8 @@ export default function ExpensesScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await AsyncStorage.setItem('expenses', JSON.stringify([]));
-              setExpenses([]);
+              await clearAllExpenses(); // Clear all expenses from the backend
+              setExpenses([]); // Reset the local state
               Alert.alert('Success', 'All expenses cleared!');
             } catch (error) {
               Alert.alert('Error', 'Failed to clear expenses');
@@ -209,7 +208,7 @@ export default function ExpensesScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>All Expenses</Text>
         {expenses.length > 0 && (
-          <TouchableOpacity onPress={clearAllExpenses} style={styles.clearButton}>
+          <TouchableOpacity onPress={clearAllExpensesHandler} style={styles.clearButton}>
             <MaterialIcons name="clear-all" size={20} color="#f44336" />
           </TouchableOpacity>
         )}
