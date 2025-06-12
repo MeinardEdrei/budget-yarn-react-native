@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://192.168.254.138:3000'; // Use your computer's local IP address
+const API_URL = 'http://172.20.10.11:3000'; // Computer's local IP address
 
 export const useApi = () => {
   const fetchExpenses = async () => {
